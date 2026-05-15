@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>GamePark 月度数据看板 · 2.15-5.15</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;background:#0f1419;color:#e6e8eb;min-height:100vh;padding:24px}
+  .wrap{max-width:1400px;margin:0 auto}
+  header{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid #2a3441}
+  header h1{font-size:24px;font-weight:600;color:#fff}
+  header h1 .sub{font-size:13px;color:#7a8b9a;font-weight:normal;margin-left:12px}
+  header .meta{font-size:12px;color:#7a8b9a;text-align:right}
+  header .meta .legend{margin-top:6px;display:flex;gap:12px;justify-content:flex-end}
+  header .meta .legend span{display:inline-flex;align-items:center;gap:6px}
+  header .meta .legend i{width:10px;height:10px;border-radius:2px;display:inline-block}
+
+  /* KPI cards */
+  .kpi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px}
+  .kpi-card{background:#1a2129;border:1px solid #2a3441;border-radius:10px;padding:20px;position:relative;overflow:hidden}
+  .kpi-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--c)}
+  .kpi-card.p1{--c:#5b8def}
+  .kpi-card.p2{--c:#16c7a5}
+  .kpi-card.p3{--c:#f1a04c}
+  .kpi-card h3{font-size:13px;color:#7a8b9a;font-weight:500;margin-bottom:4px}
+  .kpi-card .range{font-size:11px;color:#5a6b7a;margin-bottom:16px}
+  .kpi-rows{display:flex;flex-direction:column;gap:12px}
+  .kpi-row{display:flex;justify-content:space-between;align-items:baseline}
+  .kpi-row .label{font-size:12px;color:#8a9aa9}
+  .kpi-row .val{font-size:18px;font-weight:600;color:#fff;font-variant-numeric:tabular-nums}
+  .kpi-row .delta{font-size:11px;margin-left:8px;padding:1px 6px;border-radius:3px;font-variant-numeric:tabular-nums}
+  .kpi-row .delta.up{color:#16c7a5;background:rgba(22,199,165,.1)}
+  .kpi-row .delta.dn{color:#f47171;background:rgba(244,113,113,.1)}
+  .kpi-row .delta.flat{color:#7a8b9a;background:rgba(122,139,154,.1)}
+
+  /* Tabs / metric selector */
+  .toolbar{display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+  .toolbar .pills{display:flex;gap:6px;background:#1a2129;border:1px solid #2a3441;border-radius:8px;padding:4px}
+  .toolbar .pill{padding:6px 12px;font-size:12px;color:#8a9aa9;border-radius:5px;cursor:pointer;border:none;background:transparent}
+  .toolbar .pill.active{background:#2a3441;color:#fff}
+  .toolbar .pill:hover:not(.active){color:#e6e8eb}
+  .toolbar .title{font-size:14px;color:#aab5c0;margin-right:auto}
+
+  /* Charts */
+  .chart-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px}
+  .chart-row.single{grid-template-columns:1fr}
+  .chart-card{background:#1a2129;border:1px solid #2a3441;border-radius:10px;padding:20px}
+  .chart-card .head{margin-bottom:12px}
+  .chart-card h3{font-size:14px;font-weight:600;color:#fff;margin-bottom:4px}
+  .chart-card .hint{font-size:11px;color:#7a8b9a}
+  .chart-card .chart-box{position:relative;height:320px}
+  .chart-card.tall .chart-box{height:380px}
+
+  /* Table */
+  .table-card{background:#1a2129;border:1px solid #2a3441;border-radius:10px;padding:20px;margin-bottom:24px}
+  .table-card .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+  .table-card h3{font-size:14px;font-weight:600;color:#fff}
+  .table-wrap{overflow-x:auto;max-height:420px;overflow-y:auto}
+  table{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}
+  th{position:sticky;top:0;background:#1a2129;text-align:right;padding:8px 10px;font-weight:500;color:#7a8b9a;border-bottom:1px solid #2a3441;white-space:nowrap;font-size:11px}
+  th:first-child,td:first-child{text-align:left}
+  td{padding:7px 10px;text-align:right;border-bottom:1px solid #232a33;color:#cad3dc;white-space:nowrap}
+  tr:hover td{background:#232a33}
+  .pgroup{background:#2a3441;color:#fff;font-weight:500}
+  .pgroup td{padding:6px 10px;color:#fff}
+
+  /* Tooltip on chart */
+  .chartjs-tooltip{background:#0f1419 !important;border:1px solid #2a3441 !important}
+
+  footer{text-align:center;font-size:11px;color:#5a6b7a;margin-top:20px;padding-top:12px;border-top:1px solid #2a3441}
+  @media (max-width:900px){
+    .kpi-grid{grid-template-columns:1fr}
+    .chart-row{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>GamePark 月度数据看板<span class="sub">2026.02.15 ~ 2026.05.14 · 按 15→14 月度划分</span></h1>
+    <div class="meta">
+      <div>数据抓取于 <span id="ts"></span></div>
+      <div class="legend">
+        <span><i style="background:#5b8def"></i>P1 (2.15~3.14)</span>
+        <span><i style="background:#16c7a5"></i>P2 (3.15~4.14)</span>
+        <span><i style="background:#f1a04c"></i>P3 (4.15~5.14)</span>
+      </div>
+    </div>
+  </header>
+
+  <section class="kpi-grid" id="kpiGrid"></section>
+
+  <div class="toolbar">
+    <div class="title">三期对比 · 总量</div>
+    <div class="pills" id="cmpPills"></div>
+  </div>
+  <section class="chart-row single">
+    <div class="chart-card tall">
+      <div class="head">
+        <h3 id="cmpTitle">营收对比</h3>
+        <div class="hint">三个月度区间的总量对比，以及环比变化</div>
+      </div>
+      <div class="chart-box"><canvas id="cmpChart"></canvas></div>
+    </div>
+  </section>
+
+  <div class="toolbar">
+    <div class="title">每日趋势</div>
+    <div class="pills" id="trendPills"></div>
+  </div>
+  <section class="chart-row single">
+    <div class="chart-card tall">
+      <div class="head">
+        <h3 id="trendTitle">每日营收</h3>
+        <div class="hint">三期串联展示，竖虚线为月度分界</div>
+      </div>
+      <div class="chart-box"><canvas id="trendChart"></canvas></div>
+    </div>
+  </section>
+
+  <section class="chart-row">
+    <div class="chart-card">
+      <div class="head">
+        <h3>分润构成</h3>
+        <div class="hint">厂商分润 + 平台分润 = 总分润（堆叠）</div>
+      </div>
+      <div class="chart-box"><canvas id="splitChart"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="head">
+        <h3>厂商分润占比</h3>
+        <div class="hint">厂商分润 / (厂商+平台)</div>
+      </div>
+      <div class="chart-box"><canvas id="ratioChart"></canvas></div>
+    </div>
+  </section>
+
+  <section class="table-card">
+    <div class="head">
+      <h3>每日明细</h3>
+      <div class="pills" id="tablePills"></div>
+    </div>
+    <div class="table-wrap">
+      <table id="detailTable"><thead></thead><tbody></tbody></table>
+    </div>
+  </section>
+
+  <footer>数据来源：admin.gamepark.co · 自动抓取并可视化</footer>
+</div>
+
+<script>
+const DATA = [{"id":"P1","label":"2.15 ~ 3.14","start":"2026-02-15","end":"2026-03-14","days":[{"date":"2026-02-15","pv":47916,"uv":6345,"ip":6682,"bounce_rate":0.3,"register_count":593,"active_user_count":398,"charge_user_count":55,"charge_amount":2600,"order_user_count":115,"order_count":165,"order_amount":3537.0299999999997,"income_amount":3420.41,"developer_commission":401.7,"platform_commission":2018.43,"commission_amount":116.62,"arpu":9,"average_order_value":42.14},{"date":"2026-02-16","pv":48090,"uv":5771,"ip":6228,"bounce_rate":0.3,"register_count":529,"active_user_count":329,"charge_user_count":74,"charge_amount":3490,"order_user_count":138,"order_count":220,"order_amount":5571.01,"income_amount":5157.78,"developer_commission":1382.51,"platform_commission":2784.8,"commission_amount":413.23,"arpu":13.96,"average_order_value":43.32},{"date":"2026-02-17","pv":58105,"uv":6777,"ip":7028,"bounce_rate":0.3,"register_count":716,"active_user_count":414,"charge_user_count":109,"charge_amount":4730,"order_user_count":193,"order_count":301,"order_amount":6762.16,"income_amount":6184.09,"developer_commission":1914.4,"platform_commission":3807.06,"commission_amount":578.07,"arpu":14.68,"average_order_value":39.73},{"date":"2026-02-18","pv":55554,"uv":6365,"ip":6742,"bounce_rate":0.3,"register_count":629,"active_user_count":419,"charge_user_count":96,"charge_amount":3930,"order_user_count":160,"order_count":242,"order_amount":5399.469999999999,"income_amount":4981,"developer_commission":1423.6,"platform_commission":3103.18,"commission_amount":418.47,"arpu":12.01,"average_order_value":36.99},{"date":"2026-02-19","pv":58150,"uv":6926,"ip":7274,"bounce_rate":0.31,"register_count":698,"active_user_count":412,"charge_user_count":93,"charge_amount":4620,"order_user_count":193,"order_count":304,"order_amount":6709.78,"income_amount":6120.46,"developer_commission":2028,"platform_commission":3815.42,"commission_amount":589.32,"arpu":13.65,"average_order_value":42.61},{"date":"2026-02-20","pv":57627,"uv":7090,"ip":7245,"bounce_rate":0.3,"register_count":676,"active_user_count":422,"charge_user_count":81,"charge_amount":3820,"order_user_count":169,"order_count":249,"order_amount":5273.8099999999995,"income_amount":4971.67,"developer_commission":1022.5,"platform_commission":3232.01,"commission_amount":302.14,"arpu":12.9,"average_order_value":41.88},{"date":"2026-02-21","pv":62124,"uv":7267,"ip":7388,"bounce_rate":0.31,"register_count":721,"active_user_count":397,"charge_user_count":97,"charge_amount":4000,"order_user_count":179,"order_count":314,"order_amount":6017.59,"income_amount":5613.45,"developer_commission":1431.7,"platform_commission":3901.92,"commission_amount":404.14,"arpu":13.2,"average_order_value":37.7},{"date":"2026-02-22","pv":60870,"uv":7393,"ip":7404,"bounce_rate":0.3,"register_count":750,"active_user_count":454,"charge_user_count":84,"charge_amount":3890,"order_user_count":170,"order_count":311,"order_amount":5640.969999999999,"income_amount":5219.889999999999,"developer_commission":1424.9,"platform_commission":3735.12,"commission_amount":421.08,"arpu":10.95,"average_order_value":40.75},{"date":"2026-02-23","pv":57009,"uv":7737,"ip":7524,"bounce_rate":0.31,"register_count":741,"active_user_count":463,"charge_user_count":89,"charge_amount":4530,"order_user_count":174,"order_count":304,"order_amount":5850,"income_amount":5350.41,"developer_commission":1741.8,"platform_commission":3651.9,"commission_amount":499.59,"arpu":11.43,"average_order_value":43.04},{"date":"2026-02-24","pv":52682,"uv":7381,"ip":7256,"bounce_rate":0.4,"register_count":731,"active_user_count":399,"charge_user_count":71,"charge_amount":3460,"order_user_count":170,"order_count":279,"order_amount":6353.92,"income_amount":5900.99,"developer_commission":1571.3,"platform_commission":3599.22,"commission_amount":452.93,"arpu":12.71,"average_order_value":43.36},{"date":"2026-02-25","pv":49577,"uv":6918,"ip":6716,"bounce_rate":0.3,"register_count":740,"active_user_count":294,"charge_user_count":78,"charge_amount":3690,"order_user_count":141,"order_count":242,"order_amount":4659.85,"income_amount":4360.18,"developer_commission":937.6,"platform_commission":2988.55,"commission_amount":299.67,"arpu":15.49,"average_order_value":44.66},{"date":"2026-02-26","pv":46005,"uv":6968,"ip":6618,"bounce_rate":0.33,"register_count":848,"active_user_count":182,"charge_user_count":114,"charge_amount":4770,"order_user_count":172,"order_count":328,"order_amount":6341.47,"income_amount":5745.780000000001,"developer_commission":2078.4,"platform_commission":3737.24,"commission_amount":595.69,"arpu":27.62,"average_order_value":40.86},{"date":"2026-02-27","pv":44866,"uv":7269,"ip":6517,"bounce_rate":0.32,"register_count":822,"active_user_count":164,"charge_user_count":91,"charge_amount":4140,"order_user_count":158,"order_count":282,"order_amount":5411.030000000001,"income_amount":5005.66,"developer_commission":1332.8,"platform_commission":3398.2,"commission_amount":405.37,"arpu":28.1,"average_order_value":43.88},{"date":"2026-02-28","pv":41632,"uv":6191,"ip":6234,"bounce_rate":0.35,"register_count":838,"active_user_count":144,"charge_user_count":82,"charge_amount":4320,"order_user_count":146,"order_count":242,"order_amount":6776.66,"income_amount":6184.2,"developer_commission":1954,"platform_commission":3147.81,"commission_amount":592.46,"arpu":37.26,"average_order_value":57.07},{"date":"2026-03-01","pv":42333,"uv":6558,"ip":6202,"bounce_rate":0.33,"register_count":836,"active_user_count":129,"charge_user_count":72,"charge_amount":3440,"order_user_count":118,"order_count":200,"order_amount":4402.76,"income_amount":4049.6600000000003,"developer_commission":1153.6,"platform_commission":2662.46,"commission_amount":353.1,"arpu":30.46,"average_order_value":51.69},{"date":"2026-03-02","pv":38397,"uv":5834,"ip":5390,"bounce_rate":0.31,"register_count":685,"active_user_count":111,"charge_user_count":75,"charge_amount":3010,"order_user_count":133,"order_count":202,"order_amount":4600.4,"income_amount":4425.48,"developer_commission":567.8,"platform_commission":2425.1,"commission_amount":174.92,"arpu":30.97,"average_order_value":39.97},{"date":"2026-03-03","pv":35818,"uv":5217,"ip":5024,"bounce_rate":0.32,"register_count":665,"active_user_count":108,"charge_user_count":76,"charge_amount":3460,"order_user_count":129,"order_count":231,"order_amount":5204.4400000000005,"income_amount":4680.91,"developer_commission":1775.8,"platform_commission":2174.94,"commission_amount":523.53,"arpu":41.18,"average_order_value":50.54},{"date":"2026-03-04","pv":30074,"uv":4556,"ip":4276,"bounce_rate":0.33,"register_count":498,"active_user_count":105,"charge_user_count":67,"charge_amount":2760,"order_user_count":136,"order_count":221,"order_amount":5337.6,"income_amount":5149.37,"developer_commission":638.6,"platform_commission":3097.17,"commission_amount":188.23,"arpu":37.45,"average_order_value":46.27},{"date":"2026-03-05","pv":29542,"uv":4689,"ip":4092,"bounce_rate":0.34,"register_count":500,"active_user_count":99,"charge_user_count":55,"charge_amount":2210,"order_user_count":112,"order_count":179,"order_amount":3077.02,"income_amount":2906.96,"developer_commission":567.6,"platform_commission":2289.48,"commission_amount":170.06,"arpu":23.54,"average_order_value":38.84},{"date":"2026-03-06","pv":31517,"uv":5046,"ip":4249,"bounce_rate":0.31,"register_count":621,"active_user_count":112,"charge_user_count":72,"charge_amount":3430,"order_user_count":131,"order_count":241,"order_amount":4613.4,"income_amount":4156.91,"developer_commission":1610.4,"platform_commission":2783.1,"commission_amount":456.49,"arpu":31.66,"average_order_value":46.66},{"date":"2026-03-07","pv":42307,"uv":5610,"ip":5268,"bounce_rate":0.25,"register_count":907,"active_user_count":154,"charge_user_count":87,"charge_amount":3810,"order_user_count":166,"order_count":274,"order_amount":5777.150000000001,"income_amount":5216.47,"developer_commission":1841.2,"platform_commission":3029.35,"commission_amount":560.68,"arpu":27.35,"average_order_value":43.42},{"date":"2026-03-08","pv":37674,"uv":4824,"ip":4589,"bounce_rate":0.26,"register_count":740,"active_user_count":125,"charge_user_count":76,"charge_amount":2870,"order_user_count":171,"order_count":295,"order_amount":6107.58,"income_amount":5688.91,"developer_commission":1472.91,"platform_commission":3255.85,"commission_amount":418.67,"arpu":29.56,"average_order_value":38.9},{"date":"2026-03-09","pv":26361,"uv":3546,"ip":3562,"bounce_rate":0.28,"register_count":460,"active_user_count":100,"charge_user_count":51,"charge_amount":2170,"order_user_count":104,"order_count":173,"order_amount":3503.6099999999997,"income_amount":3236.59,"developer_commission":879.11,"platform_commission":1876,"commission_amount":267.02000000000004,"arpu":25.48,"average_order_value":41.77},{"date":"2026-03-10","pv":24679,"uv":3493,"ip":3513,"bounce_rate":0.3,"register_count":423,"active_user_count":89,"charge_user_count":54,"charge_amount":2770,"order_user_count":101,"order_count":185,"order_amount":4252.88,"income_amount":3980.9700000000003,"developer_commission":949.8,"platform_commission":2328.38,"commission_amount":271.91,"arpu":38.26,"average_order_value":54.05},{"date":"2026-03-11","pv":24186,"uv":3696,"ip":3582,"bounce_rate":0.3,"register_count":456,"active_user_count":78,"charge_user_count":45,"charge_amount":2830,"order_user_count":83,"order_count":140,"order_amount":3541.5600000000004,"income_amount":3046.92,"developer_commission":1677,"platform_commission":1403.86,"commission_amount":494.64,"arpu":38.38,"average_order_value":58.71},{"date":"2026-03-12","pv":23318,"uv":3329,"ip":3495,"bounce_rate":0.27,"register_count":392,"active_user_count":77,"charge_user_count":38,"charge_amount":1910,"order_user_count":96,"order_count":153,"order_amount":4019.58,"income_amount":3582.24,"developer_commission":1440.8,"platform_commission":1514.88,"commission_amount":437.34,"arpu":34.93,"average_order_value":57.22},{"date":"2026-03-13","pv":29837,"uv":4168,"ip":4172,"bounce_rate":0.27,"register_count":602,"active_user_count":110,"charge_user_count":59,"charge_amount":3500,"order_user_count":109,"order_count":209,"order_amount":4762.66,"income_amount":4075.7200000000003,"developer_commission":2208.6,"platform_commission":2187.33,"commission_amount":686.94,"arpu":32.83,"average_order_value":57.32},{"date":"2026-03-14","pv":42709,"uv":5723,"ip":5593,"bounce_rate":0.29,"register_count":944,"active_user_count":148,"charge_user_count":90,"charge_amount":3650,"order_user_count":153,"order_count":251,"order_amount":5065.7300000000005,"income_amount":4619.43,"developer_commission":1493.4,"platform_commission":3047.72,"commission_amount":446.3,"arpu":27.12,"average_order_value":38.59}]},{"id":"P2","label":"3.15 ~ 4.14","start":"2026-03-15","end":"2026-04-14","days":[{"date":"2026-03-15","pv":38510,"uv":5310,"ip":5157,"bounce_rate":0.37,"register_count":793,"active_user_count":120,"charge_user_count":71,"charge_amount":4770,"order_user_count":140,"order_count":245,"order_amount":6350.870000000001,"income_amount":5544.16,"developer_commission":2566.8,"platform_commission":3021.27,"commission_amount":806.71,"arpu":43.68,"average_order_value":64.72},{"date":"2026-03-16","pv":27591,"uv":3902,"ip":3595,"bounce_rate":0.3,"register_count":484,"active_user_count":87,"charge_user_count":61,"charge_amount":3790,"order_user_count":131,"order_count":241,"order_amount":5709.05,"income_amount":5172.31,"developer_commission":1734.6,"platform_commission":3020.95,"commission_amount":536.74,"arpu":48.59,"average_order_value":62.17},{"date":"2026-03-17","pv":26477,"uv":3826,"ip":3629,"bounce_rate":0.29,"register_count":497,"active_user_count":100,"charge_user_count":49,"charge_amount":2400,"order_user_count":102,"order_count":198,"order_amount":3957.1099999999997,"income_amount":3518.68,"developer_commission":1512.91,"platform_commission":2262.3,"commission_amount":438.43,"arpu":24.85,"average_order_value":47.78},{"date":"2026-03-18","pv":29052,"uv":4478,"ip":3830,"bounce_rate":0.29,"register_count":458,"active_user_count":98,"charge_user_count":56,"charge_amount":2720,"order_user_count":114,"order_count":218,"order_amount":4342.43,"income_amount":4106.469999999999,"developer_commission":755,"platform_commission":2896.73,"commission_amount":235.96,"arpu":32.16,"average_order_value":47.03},{"date":"2026-03-19","pv":28786,"uv":4445,"ip":3972,"bounce_rate":0.3,"register_count":546,"active_user_count":98,"charge_user_count":58,"charge_amount":2680,"order_user_count":95,"order_count":183,"order_amount":3418.1800000000003,"income_amount":3108.8,"developer_commission":1017.6,"platform_commission":2109.78,"commission_amount":309.38,"arpu":29.55,"average_order_value":43.87},{"date":"2026-03-20","pv":31692,"uv":5079,"ip":4665,"bounce_rate":0.29,"register_count":674,"active_user_count":110,"charge_user_count":50,"charge_amount":2830,"order_user_count":95,"order_count":146,"order_amount":3753.33,"income_amount":3489.52,"developer_commission":935.4,"platform_commission":1961.23,"commission_amount":263.81,"arpu":27.33,"average_order_value":52.74},{"date":"2026-03-21","pv":44939,"uv":5629,"ip":5708,"bounce_rate":0.26,"register_count":946,"active_user_count":147,"charge_user_count":75,"charge_amount":3050,"order_user_count":134,"order_count":246,"order_amount":4725.25,"income_amount":4441.51,"developer_commission":1014.6,"platform_commission":3167.32,"commission_amount":283.74,"arpu":23.07,"average_order_value":38.98},{"date":"2026-03-22","pv":37685,"uv":5259,"ip":5168,"bounce_rate":0.44,"register_count":757,"active_user_count":101,"charge_user_count":68,"charge_amount":3140,"order_user_count":128,"order_count":208,"order_amount":4524.91,"income_amount":4217.99,"developer_commission":1108,"platform_commission":2627.26,"commission_amount":306.92,"arpu":37.26,"average_order_value":48.25},{"date":"2026-03-23","pv":26225,"uv":3838,"ip":3668,"bounce_rate":0.48,"register_count":470,"active_user_count":82,"charge_user_count":56,"charge_amount":3730,"order_user_count":95,"order_count":171,"order_amount":4344.59,"income_amount":3869.9700000000003,"developer_commission":1548.6,"platform_commission":2174.59,"commission_amount":474.62,"arpu":50.14,"average_order_value":62.3},{"date":"2026-03-24","pv":28830,"uv":3941,"ip":3880,"bounce_rate":0.3,"register_count":519,"active_user_count":82,"charge_user_count":51,"charge_amount":3390,"order_user_count":92,"order_count":156,"order_amount":4205.54,"income_amount":3683.1400000000003,"developer_commission":1837,"platform_commission":1687.44,"commission_amount":522.4,"arpu":44.14,"average_order_value":63.5},{"date":"2026-03-25","pv":30333,"uv":4046,"ip":4005,"bounce_rate":0.32,"register_count":549,"active_user_count":88,"charge_user_count":65,"charge_amount":4310,"order_user_count":112,"order_count":215,"order_amount":5737.290000000001,"income_amount":4969.62,"developer_commission":2556.31,"platform_commission":2368.38,"commission_amount":767.6700000000001,"arpu":57.01,"average_order_value":66.02},{"date":"2026-03-26","pv":27817,"uv":4060,"ip":3868,"bounce_rate":0.32,"register_count":496,"active_user_count":102,"charge_user_count":48,"charge_amount":2610,"order_user_count":95,"order_count":170,"order_amount":3723.3099999999995,"income_amount":3220.13,"developer_commission":1603.91,"platform_commission":1798.8,"commission_amount":503.18,"arpu":27.18,"average_order_value":51.34},{"date":"2026-03-27","pv":32119,"uv":4839,"ip":4649,"bounce_rate":0.3,"register_count":587,"active_user_count":102,"charge_user_count":60,"charge_amount":3110,"order_user_count":94,"order_count":196,"order_amount":4361.18,"income_amount":4074.25,"developer_commission":936.6,"platform_commission":2675.98,"commission_amount":286.93,"arpu":35.12,"average_order_value":50.46},{"date":"2026-03-28","pv":41855,"uv":6163,"ip":5831,"bounce_rate":0.29,"register_count":931,"active_user_count":147,"charge_user_count":66,"charge_amount":2970,"order_user_count":114,"order_count":220,"order_amount":4099.1,"income_amount":3835.06,"developer_commission":850.91,"platform_commission":2797.69,"commission_amount":264.04,"arpu":21.34,"average_order_value":43.57},{"date":"2026-03-29","pv":38266,"uv":6047,"ip":5765,"bounce_rate":0.31,"register_count":749,"active_user_count":115,"charge_user_count":61,"charge_amount":2640,"order_user_count":129,"order_count":217,"order_amount":4063.73,"income_amount":3878.69,"developer_commission":602,"platform_commission":3007.03,"commission_amount":185.04,"arpu":24.57,"average_order_value":40.95},{"date":"2026-03-30","pv":26418,"uv":4584,"ip":4339,"bounce_rate":0.34,"register_count":473,"active_user_count":98,"charge_user_count":52,"charge_amount":2200,"order_user_count":100,"order_count":165,"order_amount":2995.34,"income_amount":2765.5599999999995,"developer_commission":752.2,"platform_commission":1836.34,"commission_amount":229.78,"arpu":25.13,"average_order_value":39.72},{"date":"2026-03-31","pv":28569,"uv":4572,"ip":3773,"bounce_rate":0.29,"register_count":521,"active_user_count":74,"charge_user_count":48,"charge_amount":1960,"order_user_count":88,"order_count":149,"order_amount":3552.7,"income_amount":3464.76,"developer_commission":276.8,"platform_commission":2195.1,"commission_amount":87.94,"arpu":36.62,"average_order_value":52.11},{"date":"2026-04-01","pv":26727,"uv":3737,"ip":3943,"bounce_rate":0.27,"register_count":506,"active_user_count":88,"charge_user_count":58,"charge_amount":3190,"order_user_count":102,"order_count":158,"order_amount":3046.7200000000003,"income_amount":2826.25,"developer_commission":700.4,"platform_commission":2069.62,"commission_amount":220.47,"arpu":38.09,"average_order_value":54.94},{"date":"2026-04-02","pv":28412,"uv":3674,"ip":3807,"bounce_rate":0.26,"register_count":575,"active_user_count":91,"charge_user_count":51,"charge_amount":3250,"order_user_count":88,"order_count":164,"order_amount":4321.85,"income_amount":3671.15,"developer_commission":2061.91,"platform_commission":2010.87,"commission_amount":650.7,"arpu":37.63,"average_order_value":63.41},{"date":"2026-04-03","pv":35491,"uv":4744,"ip":4930,"bounce_rate":0.24,"register_count":691,"active_user_count":141,"charge_user_count":62,"charge_amount":2490,"order_user_count":114,"order_count":195,"order_amount":3989.64,"income_amount":3691.1099999999997,"developer_commission":976.8,"platform_commission":2409.33,"commission_amount":298.53,"arpu":22.51,"average_order_value":48.09},{"date":"2026-04-04","pv":46032,"uv":5978,"ip":6293,"bounce_rate":0.26,"register_count":971,"active_user_count":156,"charge_user_count":67,"charge_amount":3390,"order_user_count":125,"order_count":218,"order_amount":4341.85,"income_amount":4020.33,"developer_commission":1031.8,"platform_commission":3085.45,"commission_amount":321.52,"arpu":22.85,"average_order_value":50.91},{"date":"2026-04-05","pv":42839,"uv":5620,"ip":5759,"bounce_rate":0.28,"register_count":906,"active_user_count":122,"charge_user_count":91,"charge_amount":3630,"order_user_count":140,"order_count":230,"order_amount":5063.22,"income_amount":4663.72,"developer_commission":1298.6,"platform_commission":3512.59,"commission_amount":399.5,"arpu":30.66,"average_order_value":39.38},{"date":"2026-04-06","pv":31794,"uv":4483,"ip":4477,"bounce_rate":0.3,"register_count":622,"active_user_count":97,"charge_user_count":48,"charge_amount":2010,"order_user_count":107,"order_count":166,"order_amount":4208.76,"income_amount":3888.75,"developer_commission":1041.6,"platform_commission":1961.56,"commission_amount":320.01,"arpu":28.98,"average_order_value":52.07},{"date":"2026-04-07","pv":22548,"uv":3426,"ip":3352,"bounce_rate":0.32,"register_count":440,"active_user_count":81,"charge_user_count":47,"charge_amount":2340,"order_user_count":92,"order_count":137,"order_amount":3330.67,"income_amount":3046.55,"developer_commission":982,"platform_commission":1838.07,"commission_amount":284.12,"arpu":31.88,"average_order_value":51.65},{"date":"2026-04-08","pv":22430,"uv":3673,"ip":3485,"bounce_rate":0.33,"register_count":396,"active_user_count":89,"charge_user_count":46,"charge_amount":1860,"order_user_count":80,"order_count":135,"order_amount":2412.51,"income_amount":2244.21,"developer_commission":534,"platform_commission":1731.11,"commission_amount":168.3,"arpu":20.9,"average_order_value":40.43},{"date":"2026-04-09","pv":25768,"uv":3816,"ip":3742,"bounce_rate":0.31,"register_count":455,"active_user_count":80,"charge_user_count":50,"charge_amount":2290,"order_user_count":84,"order_count":149,"order_amount":3376.77,"income_amount":2874.6800000000003,"developer_commission":1567.6,"platform_commission":1640.47,"commission_amount":502.09,"arpu":29.44,"average_order_value":46.18},{"date":"2026-04-10","pv":29461,"uv":4530,"ip":4069,"bounce_rate":0.32,"register_count":534,"active_user_count":80,"charge_user_count":59,"charge_amount":2790,"order_user_count":102,"order_count":197,"order_amount":4047.2,"income_amount":3809.74,"developer_commission":633.6,"platform_commission":3089.78,"commission_amount":237.46,"arpu":36.25,"average_order_value":47.54},{"date":"2026-04-11","pv":34094,"uv":6678,"ip":5029,"bounce_rate":0.31,"register_count":726,"active_user_count":113,"charge_user_count":61,"charge_amount":3100,"order_user_count":104,"order_count":165,"order_amount":3850.39,"income_amount":3470.29,"developer_commission":1188.31,"platform_commission":2556.2,"commission_amount":380.1,"arpu":27.78,"average_order_value":50.63},{"date":"2026-04-12","pv":32697,"uv":6516,"ip":4712,"bounce_rate":0.39,"register_count":569,"active_user_count":108,"charge_user_count":64,"charge_amount":3310,"order_user_count":105,"order_count":160,"order_amount":4041.97,"income_amount":3756.49,"developer_commission":921,"platform_commission":2367.75,"commission_amount":285.48,"arpu":32.56,"average_order_value":51.72},{"date":"2026-04-13","pv":24621,"uv":4930,"ip":3609,"bounce_rate":0.36,"register_count":386,"active_user_count":58,"charge_user_count":44,"charge_amount":1920,"order_user_count":84,"order_count":147,"order_amount":3265.09,"income_amount":3016.62,"developer_commission":778,"platform_commission":2000.57,"commission_amount":248.47,"arpu":37.08,"average_order_value":44.8},{"date":"2026-04-14","pv":24283,"uv":4959,"ip":3590,"bounce_rate":0.35,"register_count":403,"active_user_count":77,"charge_user_count":39,"charge_amount":1790,"order_user_count":76,"order_count":135,"order_amount":3147.7700000000004,"income_amount":3023.87,"developer_commission":394,"platform_commission":1928.17,"commission_amount":123.9,"arpu":26.49,"average_order_value":48.56}]},{"id":"P3","label":"4.15 ~ 5.14","start":"2026-04-15","end":"2026-05-14","days":[{"date":"2026-04-15","pv":23429,"uv":4844,"ip":3911,"bounce_rate":0.36,"register_count":407,"active_user_count":52,"charge_user_count":47,"charge_amount":3080,"order_user_count":85,"order_count":133,"order_amount":3995.61,"income_amount":3428.41,"developer_commission":1777.6,"platform_commission":1951.41,"commission_amount":567.2,"arpu":62.12,"average_order_value":65.92},{"date":"2026-04-16","pv":24619,"uv":4494,"ip":4094,"bounce_rate":0.34,"register_count":441,"active_user_count":72,"charge_user_count":44,"charge_amount":1610,"order_user_count":73,"order_count":136,"order_amount":2384.59,"income_amount":2291.48,"developer_commission":302,"platform_commission":1762.52,"commission_amount":93.11,"arpu":24.76,"average_order_value":37.92},{"date":"2026-04-17","pv":34565,"uv":6150,"ip":5491,"bounce_rate":0.33,"register_count":627,"active_user_count":106,"charge_user_count":64,"charge_amount":2450,"order_user_count":104,"order_count":181,"order_amount":3442.33,"income_amount":3365.35,"developer_commission":241.8,"platform_commission":2827.63,"commission_amount":76.98,"arpu":26.14,"average_order_value":40.75},{"date":"2026-04-18","pv":38785,"uv":6589,"ip":5397,"bounce_rate":0.35,"register_count":798,"active_user_count":140,"charge_user_count":80,"charge_amount":3080,"order_user_count":136,"order_count":224,"order_amount":4987.29,"income_amount":4835.9,"developer_commission":487.6,"platform_commission":3166.59,"commission_amount":151.39,"arpu":28.93,"average_order_value":48.21},{"date":"2026-04-19","pv":32974,"uv":5114,"ip":4876,"bounce_rate":0.3,"register_count":629,"active_user_count":90,"charge_user_count":59,"charge_amount":3010,"order_user_count":116,"order_count":192,"order_amount":4053.2,"income_amount":3699.04,"developer_commission":1136.6,"platform_commission":2352.3,"commission_amount":354.16,"arpu":36.5,"average_order_value":51.33},{"date":"2026-04-20","pv":23454,"uv":3719,"ip":3562,"bounce_rate":0.33,"register_count":426,"active_user_count":72,"charge_user_count":32,"charge_amount":1870,"order_user_count":70,"order_count":128,"order_amount":2585.21,"income_amount":2398.7,"developer_commission":594,"platform_commission":1418.11,"commission_amount":186.51,"arpu":31.3,"average_order_value":59.31},{"date":"2026-04-21","pv":24692,"uv":4218,"ip":3613,"bounce_rate":0.34,"register_count":426,"active_user_count":78,"charge_user_count":42,"charge_amount":1990,"order_user_count":92,"order_count":156,"order_amount":3099.08,"income_amount":2801.0299999999997,"developer_commission":993.8,"platform_commission":1770.58,"commission_amount":298.05,"arpu":26.49,"average_order_value":45.91},{"date":"2026-04-22","pv":21674,"uv":3835,"ip":3487,"bounce_rate":0.32,"register_count":366,"active_user_count":74,"charge_user_count":39,"charge_amount":1850,"order_user_count":66,"order_count":113,"order_amount":2355.62,"income_amount":2037.11,"developer_commission":993.8,"platform_commission":1046.12,"commission_amount":318.51,"arpu":25.26,"average_order_value":46.74},{"date":"2026-04-23","pv":22304,"uv":3591,"ip":3469,"bounce_rate":0.32,"register_count":353,"active_user_count":79,"charge_user_count":48,"charge_amount":3350,"order_user_count":74,"order_count":151,"order_amount":4103.610000000001,"income_amount":3422.55,"developer_commission":2155.8,"platform_commission":1816.91,"commission_amount":681.06,"arpu":43.14,"average_order_value":69.55},{"date":"2026-04-24","pv":24102,"uv":3814,"ip":3819,"bounce_rate":0.4,"register_count":441,"active_user_count":64,"charge_user_count":37,"charge_amount":1520,"order_user_count":74,"order_count":126,"order_amount":2268.12,"income_amount":2059.6,"developer_commission":727.6,"platform_commission":1452.72,"commission_amount":208.52,"arpu":24.66,"average_order_value":41.53},{"date":"2026-04-25","pv":31936,"uv":4673,"ip":4685,"bounce_rate":0.3,"register_count":636,"active_user_count":97,"charge_user_count":60,"charge_amount":2390,"order_user_count":104,"order_count":179,"order_amount":3419.88,"income_amount":3320.73,"developer_commission":314.8,"platform_commission":2617.48,"commission_amount":99.15,"arpu":29.05,"average_order_value":46.2},{"date":"2026-04-26","pv":28809,"uv":4201,"ip":4265,"bounce_rate":0.3,"register_count":579,"active_user_count":106,"charge_user_count":48,"charge_amount":1910,"order_user_count":102,"order_count":181,"order_amount":3722.92,"income_amount":3589.45,"developer_commission":474,"platform_commission":2390.42,"commission_amount":133.47,"arpu":22.06,"average_order_value":47.71},{"date":"2026-04-27","pv":20782,"uv":3285,"ip":3233,"bounce_rate":0.34,"register_count":353,"active_user_count":70,"charge_user_count":36,"charge_amount":1690.13,"order_user_count":65,"order_count":116,"order_amount":2969.31,"income_amount":2841.66,"developer_commission":449.8,"platform_commission":1648.61,"commission_amount":127.65,"arpu":30.26,"average_order_value":57.25},{"date":"2026-04-28","pv":23808,"uv":3352,"ip":3232,"bounce_rate":0.35,"register_count":342,"active_user_count":65,"charge_user_count":58,"charge_amount":2450.13,"order_user_count":89,"order_count":173,"order_amount":3440.99,"income_amount":3185.8999999999996,"developer_commission":835,"platform_commission":2238.29,"commission_amount":255.09,"arpu":42.07,"average_order_value":44.11},{"date":"2026-04-29","pv":18083,"uv":3830,"ip":2785,"bounce_rate":0.34,"register_count":292,"active_user_count":71,"charge_user_count":33,"charge_amount":1580.28,"order_user_count":67,"order_count":120,"order_amount":2326.42,"income_amount":2121.48,"developer_commission":663.8,"platform_commission":1437.12,"commission_amount":204.94,"arpu":23.89,"average_order_value":48.47},{"date":"2026-04-30","pv":23278,"uv":3775,"ip":3539,"bounce_rate":0.3,"register_count":422,"active_user_count":90,"charge_user_count":43,"charge_amount":2410,"order_user_count":79,"order_count":149,"order_amount":3812.48,"income_amount":3552.83,"developer_commission":869.8,"platform_commission":1903.38,"commission_amount":259.65,"arpu":35.65,"average_order_value":66.85},{"date":"2026-05-01","pv":33291,"uv":4884,"ip":4667,"bounce_rate":0.27,"register_count":702,"active_user_count":128,"charge_user_count":66,"charge_amount":4130,"order_user_count":117,"order_count":215,"order_amount":4526.54,"income_amount":4319.39,"developer_commission":671.6,"platform_commission":3339.44,"commission_amount":207.15,"arpu":34.63,"average_order_value":61.56},{"date":"2026-05-02","pv":30801,"uv":4415,"ip":4371,"bounce_rate":0.28,"register_count":611,"active_user_count":101,"charge_user_count":49,"charge_amount":2050,"order_user_count":97,"order_count":157,"order_amount":3708.04,"income_amount":3341.55,"developer_commission":1178.6,"platform_commission":2045.74,"commission_amount":366.49,"arpu":21.45,"average_order_value":42.47},{"date":"2026-05-03","pv":28961,"uv":4163,"ip":4019,"bounce_rate":0.28,"register_count":547,"active_user_count":94,"charge_user_count":64,"charge_amount":3730,"order_user_count":102,"order_count":194,"order_amount":4596.34,"income_amount":4030.1099999999997,"developer_commission":1830.8,"platform_commission":2531.94,"commission_amount":566.23,"arpu":40.96,"average_order_value":57.47},{"date":"2026-05-04","pv":27928,"uv":3913,"ip":3956,"bounce_rate":0.28,"register_count":513,"active_user_count":108,"charge_user_count":61,"charge_amount":3430,"order_user_count":103,"order_count":189,"order_amount":4447.4400000000005,"income_amount":3917.58,"developer_commission":1667.6,"platform_commission":2339.24,"commission_amount":529.86,"arpu":34.75,"average_order_value":57.74},{"date":"2026-05-05","pv":22871,"uv":3529,"ip":3515,"bounce_rate":0.31,"register_count":524,"active_user_count":91,"charge_user_count":34,"charge_amount":1330,"order_user_count":73,"order_count":128,"order_amount":2501.72,"income_amount":2278.04,"developer_commission":732,"platform_commission":1546.92,"commission_amount":223.68,"arpu":16.81,"average_order_value":42.5},{"date":"2026-05-06","pv":17637,"uv":3020,"ip":2880,"bounce_rate":0.36,"register_count":333,"active_user_count":59,"charge_user_count":34,"charge_amount":2320,"order_user_count":61,"order_count":115,"order_amount":3212.88,"income_amount":2820.56,"developer_commission":1313.6,"platform_commission":1796.58,"commission_amount":392.32,"arpu":40.31,"average_order_value":67.94},{"date":"2026-05-07","pv":17223,"uv":3290,"ip":3199,"bounce_rate":0.33,"register_count":267,"active_user_count":53,"charge_user_count":29,"charge_amount":2340,"order_user_count":51,"order_count":103,"order_amount":2591.63,"income_amount":2159.5200000000004,"developer_commission":1359.6,"platform_commission":1116.03,"commission_amount":432.11,"arpu":46.34,"average_order_value":79.23},{"date":"2026-05-08","pv":18368,"uv":3082,"ip":2909,"bounce_rate":0.32,"register_count":341,"active_user_count":53,"charge_user_count":40,"charge_amount":1870,"order_user_count":63,"order_count":95,"order_amount":2648.2999999999997,"income_amount":2562.5,"developer_commission":270.6,"platform_commission":1506.9,"commission_amount":85.8,"arpu":37.69,"average_order_value":48.72},{"date":"2026-05-09","pv":21147,"uv":3661,"ip":3544,"bounce_rate":0.33,"register_count":354,"active_user_count":72,"charge_user_count":41,"charge_amount":1600,"order_user_count":71,"order_count":135,"order_amount":3019.42,"income_amount":2892.76,"developer_commission":409,"platform_commission":2067.72,"commission_amount":126.66,"arpu":28.11,"average_order_value":48.18},{"date":"2026-05-10","pv":24099,"uv":4448,"ip":4243,"bounce_rate":0.33,"register_count":452,"active_user_count":62,"charge_user_count":41,"charge_amount":1670,"order_user_count":78,"order_count":123,"order_amount":2565.42,"income_amount":2502.42,"developer_commission":210.8,"platform_commission":2044.92,"commission_amount":63,"arpu":28.72,"average_order_value":41.41},{"date":"2026-05-11","pv":17915,"uv":3156,"ip":3000,"bounce_rate":0.33,"register_count":313,"active_user_count":42,"charge_user_count":34,"charge_amount":1210,"order_user_count":51,"order_count":100,"order_amount":1633.51,"income_amount":1590.99,"developer_commission":136,"platform_commission":1503.22,"commission_amount":42.52,"arpu":28.81,"average_order_value":35.59},{"date":"2026-05-12","pv":15887,"uv":3026,"ip":2817,"bounce_rate":0.34,"register_count":282,"active_user_count":48,"charge_user_count":29,"charge_amount":1340,"order_user_count":46,"order_count":72,"order_amount":1644.12,"income_amount":1528.05,"developer_commission":377,"platform_commission":1053.22,"commission_amount":116.07,"arpu":32.02,"average_order_value":49.58},{"date":"2026-05-13","pv":16444,"uv":3296,"ip":2910,"bounce_rate":0.32,"register_count":261,"active_user_count":56,"charge_user_count":28,"charge_amount":1470,"order_user_count":41,"order_count":76,"order_amount":1519.65,"income_amount":1341.0900000000001,"developer_commission":565.8,"platform_commission":895.85,"commission_amount":178.56,"arpu":26.87,"average_order_value":51.89},{"date":"2026-05-14","pv":17043,"uv":3243,"ip":2988,"bounce_rate":0.36,"register_count":324,"active_user_count":43,"charge_user_count":23,"charge_amount":2080,"order_user_count":55,"order_count":85,"order_amount":2674.8,"income_amount":2287.42,"developer_commission":1230,"platform_commission":908.9,"commission_amount":387.38,"arpu":54.43,"average_order_value":93.62}]}];
+
+const METRICS = [
+  { key:'order_amount',         label:'营收',          fmt:'money', sum:true },
+  { key:'developer_commission', label:'厂商分润',      fmt:'money', sum:true },
+  { key:'platform_commission',  label:'平台分润',      fmt:'money', sum:true },
+  { key:'income_amount',        label:'有效订单收入',  fmt:'money', sum:true },
+  { key:'pv',                   label:'PV',           fmt:'int',   sum:true },
+  { key:'uv',                   label:'UV',           fmt:'int',   sum:true },
+  { key:'order_count',          label:'订单数',        fmt:'int',   sum:true },
+  { key:'order_user_count',     label:'付费用户数',    fmt:'int',   sum:true },
+  { key:'register_count',       label:'新增注册',      fmt:'int',   sum:true },
+  { key:'active_user_count',    label:'活跃用户',      fmt:'int',   sum:true },
+  { key:'charge_amount',        label:'充值额度',      fmt:'money', sum:true },
+  { key:'arpu',                 label:'ARPU(均值)',    fmt:'money', sum:false },
+  { key:'average_order_value',  label:'客单价(均值)',  fmt:'money', sum:false }
+];
+const COLORS = ['#5b8def','#16c7a5','#f1a04c'];
+
+function fmt(val, type){
+  if(type==='money') return '¥' + Number(val).toLocaleString('zh-CN',{maximumFractionDigits:2, minimumFractionDigits:2});
+  if(type==='int')   return Number(val).toLocaleString('zh-CN');
+  return val;
+}
+function delta(cur, prev){
+  if(!prev) return {v:0, s:'flat', txt:'—'};
+  const d = (cur - prev) / prev * 100;
+  if(Math.abs(d) < 0.05) return {v:d, s:'flat', txt:'0%'};
+  return { v:d, s: d>0?'up':'dn', txt: (d>0?'+':'') + d.toFixed(1) + '%' };
+}
+
+function sumPeriod(p, key){
+  const m = METRICS.find(x=>x.key===key);
+  if(!m) return 0;
+  if(m.sum) return p.days.reduce((a,d)=>a + Number(d[key]||0), 0);
+  const vals = p.days.map(d => Number(d[key]||0));
+  return vals.reduce((a,v)=>a+v,0) / vals.length;
+}
+
+// Precompute totals
+const totals = DATA.map(p => {
+  const t = {};
+  METRICS.forEach(m => t[m.key] = sumPeriod(p, m.key));
+  return { id:p.id, label:p.label, totals:t, days:p.days };
+});
+
+// === KPI grid ===
+const kpiKeys = ['order_amount','developer_commission','platform_commission','pv','uv','order_count','order_user_count'];
+const kpiHtml = totals.map((p, i) => {
+  const rows = kpiKeys.map(k => {
+    const m = METRICS.find(x=>x.key===k);
+    const val = p.totals[k];
+    let dHtml = '';
+    if(i>0){
+      const d = delta(val, totals[i-1].totals[k]);
+      dHtml = `<span class="delta ${d.s}">${d.txt}</span>`;
+    } else {
+      dHtml = '<span class="delta flat">—</span>';
+    }
+    return `<div class="kpi-row"><span class="label">${m.label}</span><span><span class="val">${fmt(val,m.fmt)}</span>${dHtml}</span></div>`;
+  }).join('');
+  return `<div class="kpi-card p${i+1}">
+    <h3>${'P'+(i+1)+' · '+p.label}</h3>
+    <div class="range">${p.days.length} 天 · ${p.days[0].date} ~ ${p.days[p.days.length-1].date}</div>
+    <div class="kpi-rows">${rows}</div>
+  </div>`;
+}).join('');
+document.getElementById('kpiGrid').innerHTML = kpiHtml;
+document.getElementById('ts').textContent = new Date().toLocaleString('zh-CN',{hour12:false});
+
+// === Period comparison chart ===
+const cmpKeys = ['order_amount','developer_commission','platform_commission','pv','uv','order_count','order_user_count','register_count'];
+function makePills(containerId, keys, onChange){
+  const c = document.getElementById(containerId);
+  c.innerHTML = keys.map((k,i)=>{
+    const m = METRICS.find(x=>x.key===k);
+    return `<button class="pill ${i===0?'active':''}" data-k="${k}">${m.label}</button>`;
+  }).join('');
+  c.querySelectorAll('.pill').forEach(b=>{
+    b.onclick = () => {
+      c.querySelectorAll('.pill').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      onChange(b.dataset.k);
+    };
+  });
+}
+
+let cmpChart;
+function renderCmp(key){
+  const m = METRICS.find(x=>x.key===key);
+  const vals = totals.map(t => t.totals[key]);
+  document.getElementById('cmpTitle').textContent = m.label + ' 对比';
+  if(cmpChart) cmpChart.destroy();
+  cmpChart = new Chart(document.getElementById('cmpChart'), {
+    type:'bar',
+    data:{ labels: totals.map((t,i)=>'P'+(i+1)+' '+t.label), datasets:[{
+      label: m.label, data: vals, backgroundColor: COLORS, borderRadius:6, maxBarThickness:90
+    }]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false}, tooltip:{
+        callbacks:{ label:ctx=> m.label+': '+fmt(ctx.parsed.y, m.fmt) +
+          (ctx.dataIndex>0?' (环比 '+delta(ctx.parsed.y, vals[ctx.dataIndex-1]).txt+')':'')
+        }
+      }},
+      scales:{
+        x:{ticks:{color:'#7a8b9a'}, grid:{display:false}},
+        y:{ticks:{color:'#7a8b9a', callback:v=>m.fmt==='money'?'¥'+v.toLocaleString():v.toLocaleString()}, grid:{color:'#232a33'}}
+      }
+    }
+  });
+}
+makePills('cmpPills', cmpKeys, renderCmp);
+renderCmp('order_amount');
+
+// === Daily trend chart ===
+let trendChart;
+function renderTrend(key){
+  const m = METRICS.find(x=>x.key===key);
+  document.getElementById('trendTitle').textContent = '每日 ' + m.label;
+  if(trendChart) trendChart.destroy();
+  const datasets = totals.map((p, i) => ({
+    label: 'P'+(i+1)+' '+p.label,
+    data: p.days.map(d=>({x:d.date, y:Number(d[key])})),
+    borderColor: COLORS[i],
+    backgroundColor: COLORS[i]+'33',
+    pointRadius:2, pointHoverRadius:5, borderWidth:2,
+    tension:0.25, fill:false
+  }));
+  trendChart = new Chart(document.getElementById('trendChart'), {
+    type:'line',
+    data:{ datasets },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{ mode:'nearest', intersect:false },
+      plugins:{
+        legend:{ labels:{color:'#aab5c0', boxWidth:12} },
+        tooltip:{ callbacks:{ label:ctx => ctx.dataset.label+' '+ctx.label+': '+fmt(ctx.parsed.y, m.fmt) } }
+      },
+      scales:{
+        x:{ type:'category', ticks:{color:'#7a8b9a', maxRotation:0, autoSkip:true, maxTicksLimit:14}, grid:{display:false}},
+        y:{ ticks:{color:'#7a8b9a', callback:v=>m.fmt==='money'?'¥'+v.toLocaleString():v.toLocaleString()}, grid:{color:'#232a33'}}
+      }
+    }
+  });
+}
+makePills('trendPills', cmpKeys, renderTrend);
+renderTrend('order_amount');
+
+// === Stacked split chart ===
+new Chart(document.getElementById('splitChart'), {
+  type:'bar',
+  data:{
+    labels: totals.map((t,i)=>'P'+(i+1)+' '+t.label),
+    datasets:[
+      { label:'厂商分润', data: totals.map(t=>t.totals.developer_commission), backgroundColor:'#5b8def', borderRadius:6 },
+      { label:'平台分润', data: totals.map(t=>t.totals.platform_commission),  backgroundColor:'#16c7a5', borderRadius:6 }
+    ]
+  },
+  options:{
+    responsive:true, maintainAspectRatio:false,
+    plugins:{ legend:{labels:{color:'#aab5c0'}},
+      tooltip:{ callbacks:{ label:ctx=>ctx.dataset.label+': '+fmt(ctx.parsed.y,'money') } }
+    },
+    scales:{
+      x:{stacked:true, ticks:{color:'#7a8b9a'}, grid:{display:false}},
+      y:{stacked:true, ticks:{color:'#7a8b9a', callback:v=>'¥'+v.toLocaleString()}, grid:{color:'#232a33'}}
+    }
+  }
+});
+
+// === Ratio donut/bar ===
+const ratios = totals.map(t => {
+  const total = t.totals.developer_commission + t.totals.platform_commission;
+  return total>0 ? t.totals.developer_commission / total * 100 : 0;
+});
+new Chart(document.getElementById('ratioChart'), {
+  type:'bar',
+  data:{
+    labels: totals.map((t,i)=>'P'+(i+1)+' '+t.label),
+    datasets:[{ label:'厂商分润占比', data: ratios, backgroundColor: COLORS, borderRadius:6, maxBarThickness:60 }]
+  },
+  options:{
+    responsive:true, maintainAspectRatio:false, indexAxis:'y',
+    plugins:{ legend:{display:false},
+      tooltip:{callbacks:{ label:ctx=>'厂商占比: '+ctx.parsed.x.toFixed(1)+'% / 平台占比: '+(100-ctx.parsed.x).toFixed(1)+'%' }}
+    },
+    scales:{
+      x:{ticks:{color:'#7a8b9a', callback:v=>v+'%'}, grid:{color:'#232a33'}, max:100},
+      y:{ticks:{color:'#7a8b9a'}, grid:{display:false}}
+    }
+  }
+});
+
+// === Detail table ===
+const tableCols = [
+  ['date','日期'], ['pv','PV'], ['uv','UV'], ['register_count','新增注册'],
+  ['active_user_count','活跃用户'], ['order_count','订单数'], ['order_user_count','付费用户'],
+  ['order_amount','营收'], ['income_amount','订单收入'], ['developer_commission','厂商分润'],
+  ['platform_commission','平台分润']
+];
+function renderTable(filter){
+  const thead = '<tr>'+tableCols.map(c=>`<th>${c[1]}</th>`).join('')+'</tr>';
+  document.querySelector('#detailTable thead').innerHTML = thead;
+  let html = '';
+  totals.forEach((p, i) => {
+    if(filter !== 'all' && filter !== 'P'+(i+1)) return;
+    // group row with totals
+    html += `<tr class="pgroup"><td>P${i+1} · ${p.label} (合计)</td>` +
+      tableCols.slice(1).map(c=>{
+        const m = METRICS.find(x=>x.key===c[0]);
+        if(!m) return '<td></td>';
+        return `<td>${fmt(p.totals[c[0]], m.fmt)}</td>`;
+      }).join('') + '</tr>';
+    p.days.forEach(d => {
+      html += '<tr>' + tableCols.map(c => {
+        if(c[0]==='date') return `<td>${d.date}</td>`;
+        const m = METRICS.find(x=>x.key===c[0]);
+        return `<td>${fmt(d[c[0]]||0, m?m.fmt:'int')}</td>`;
+      }).join('') + '</tr>';
+    });
+  });
+  document.querySelector('#detailTable tbody').innerHTML = html;
+}
+const tp = document.getElementById('tablePills');
+tp.innerHTML = ['全部','P1','P2','P3'].map((l,i)=>`<button class="pill ${i===0?'active':''}" data-f="${i===0?'all':l}">${l}</button>`).join('');
+tp.querySelectorAll('.pill').forEach(b=>{
+  b.onclick = ()=>{ tp.querySelectorAll('.pill').forEach(x=>x.classList.remove('active')); b.classList.add('active'); renderTable(b.dataset.f); };
+});
+renderTable('all');
+</script>
+</body>
+</html>
